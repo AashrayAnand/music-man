@@ -5,6 +5,12 @@ fn is_supported_audio_file(entry: &DirEntry) -> bool {
     if !entry.path().is_file() {
         return false;
     }
+
+    // macOS fork files.
+    if entry.file_name().to_string_lossy().starts_with("._") {
+        return false;
+    }
+
     entry
         .path()
         .extension()
@@ -75,24 +81,7 @@ impl AttachedDevice {
             .filter(|entry| is_supported_audio_file(entry))
             .map(|entry| {
                 let filename = entry.path();
-                let stem = filename.file_stem()
-                    .map(|s| s.to_string_lossy().to_string()).unwrap();
-
-                // Try to split up the filename to artist + title, if delimiter isn't there just take it all as title.
-                let (artist, title) = if let Some((a, t)) = stem.split_once(" - ") {
-                    (Some(a.trim().to_string()), Some(t.trim().to_string()))
-                } else {
-                    (None, None)
-                };
-
-                Ok(AudioInfo {
-                    artist,
-                    title,
-                    filename: Some(filename.to_string_lossy().to_string()), // AttachedDevice will always have at least filenames.
-                    youtube_url: None,
-                    isrc: None,
-                    duration_secs: None,
-                })
+                Ok(AudioInfo::from_filename(&filename))
             })
             .collect()
     }

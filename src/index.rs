@@ -26,7 +26,9 @@ impl AudioIndex for AttachedDevice {
             .filter_map(|entry| {
                 let entry = entry.as_ref().unwrap();
                 let file_name = entry.file_name().to_string_lossy().to_string();
-                if entry.file_type().unwrap().is_dir() && !file_name.starts_with('.') {
+                if entry.file_type().unwrap().is_dir() 
+                    && !file_name.starts_with('.')
+                    && file_name != "System Volume Information" {
                     return Some((entry.path(), file_name))
                 }
                 None

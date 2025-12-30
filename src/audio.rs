@@ -1,5 +1,5 @@
 use std::fmt::Display;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::fs::DirEntry;
 
 use crate::source::AudioSource;
@@ -36,6 +36,28 @@ pub struct AudioInfo {
     pub youtube_url: Option<String>,
     pub isrc: Option<String>,
     pub duration_secs: Option<u32>
+}
+
+impl AudioInfo {
+    pub fn from_filename(filename: &Path) -> Self {
+        let stem = filename.file_stem()
+            .map(|s| s.to_string_lossy().to_string()).unwrap();
+
+        // Try to split up the filename to artist + title, if delimiter isn't there just take it all as title.
+        let (artist, title) = stem.split_once(" - ")
+            .or_else(|| stem.split_once(" – "))  // en-dash
+            .map(|(a, t)| (Some(a.trim().to_string()), Some(t.trim().to_string())))
+            .unwrap_or((None, Some(stem.to_string())));
+
+        Self {
+            artist,
+            title,
+            filename: Some(filename.to_string_lossy().to_string()), // AttachedDevice will always have at least filenames.
+            youtube_url: None,
+            isrc: None,
+            duration_secs: None,
+        }
+    }
 }
 
 #[derive(Debug, thiserror::Error)]

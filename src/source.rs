@@ -26,7 +26,13 @@ impl AudioSource for YtDlpSource {
     }
 
     fn search(&self, info: &AudioInfo) -> Result<AudioInfo, AudioError> {
-        Err(AudioError::NotFound)
+        if let (Some(artist), Some(title)) = (&info.artist, &info.title) {
+            let url = self.search_audio(title, artist)?;
+            let mut extended_info = info.clone();
+            extended_info.youtube_url = Some(url);
+            return Ok(extended_info);
+        }
+        Err(AudioError::MissingInfo)
     }
 
     fn fetch(&self, info: &AudioInfo, dest: PathBuf) -> Result<AudioLocation, AudioError> {
@@ -78,22 +84,27 @@ impl YtDlpSource {
 
     // Start by connecting song name and artist to youtube, see what we
     // can search by.
-    fn search_audio(name: &str, artist: &str) -> Result<String, Box<dyn std::error::Error>> {
+    fn search_audio(&self, artist: &str, title: &str) -> Result<String, AudioError> {
         // Trim whitespace and "+" separate name and artist word by word.
-        let name_and_artist = name.trim().split_whitespace().chain(artist.trim().split_whitespace()).collect::<Vec<_>>().join(" ");
+        let title_and_artist = title.trim().split_whitespace().chain(artist.trim().split_whitespace()).collect::<Vec<_>>().join(" ");
 
         let output = Command::new("yt-dlp")
             .args([
                 "--get-id",
                 "--default-search", "ytsearch1",
-                &name_and_artist,
+                &title_and_artist,
             ])
-            .output()?;
-        
-        if !output.status.success() {
-            return Err("yt-dlp search failed".into())
+            .output();
+
+        match output {
+            Ok(output) => {
+                if !output.status.success() {
+                    return Err(AudioError::ExportFailed(format!("ytb-dl exited with status: {}", output.status)));
+                }
+                let video_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                Ok(format!("https://www.youtube.com/watch?v={}", video_id))
+            },
+            Err(e) => Err(AudioError::Io(e))
         }
-        let video_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        Ok(format!("https://www.youtube.com/watch?v={}", video_id))
     }
 }

@@ -32,11 +32,31 @@ fn main() {
     };
 
     let source = YtDlpSource {name: "ytdlp".to_string()};
+    let cache = AttachedDevice::new(local_audio_cache_dir().display().to_string(), local_audio_cache_dir());
     let target = AttachedDevice::new(dirpath.display().to_string(), dirpath);
 
     // Iterate sources in order, until we find one that contains the AudioInfo.
     // Fetch from the source to the local file cache, will mean we cache the audio there for a future look up.
-    // 
+    loop {
+        print!("> ");
+        let mut buffer = String::new();
+        stdin().read_line(&mut buffer).expect("Failed to read input");
+
+        let mut split = buffer.trim().split_whitespace();
+        let cmd = split.next().expect("No command provided.");
+        let args = split.collect::<Vec<_>>();
+        match cmd {
+            "list" => {
+                for playlist in target.list_playlists().unwrap() {
+                    println!("Playlist {}", playlist.name.disp_name());
+                    for audio in &playlist.audio {
+                        println!("{:?}", audio);
+                    }
+                }
+            },
+            _ => {},
+        }
+    }
 
     // 3. Import music onto device.
     //  - Select a source type for import.
