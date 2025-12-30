@@ -1,3 +1,13 @@
 1. future to async fetch song.
-2. write song to known file path with hash or ID, skip songs that have already been found.
-3. bulk import songs, spawn many parallel tasks reading from async-channel.
+2. List and select eligible devices.
+2. Iterate over a hierarchy of audio sources, local file cache -> audio source 1 -> ...
+3. write song to known file path with hash or ID, skip songs that have already been found.
+4. bulk import songs, spawn many parallel tasks reading from async-channel.
+5. Make song fetching retriable, cycle through different methods.
+6. Download a playlist -> execute per song task to look up song from hierarchial sources + download to device.
+
+Music Man Daemon
+================
+1. Recover state from local file cache, tracking the downloaded audio.
+2. Cache credentials for authenticated audio platforms.
+3. On restart, sync playlist information and local file cache 

@@ -1,102 +1,42 @@
-use core::error;
-use std::{io::stdin, path::Path, process::Command};
+pub mod app;
+pub mod audio;
+pub mod index;
+pub mod source;
+pub mod target;
+pub mod device;
 
-const SWIM_PRO_PATH: &str = "/Volumes/SWIM PRO";
-const SWIM_PRO_MAX_DEPTH: usize = 3;
+use std::{io::stdin, path::{Path, PathBuf}, process::Command};
 
-fn is_supported_audio_file(entry: &walkdir::DirEntry) -> bool {
-    if !entry.file_type().is_file() {
-        return false;
-    }
-    entry
-        .path()
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .map(|ext| {
-            matches!(
-                ext.to_lowercase().as_str(),
-                "mp3" | "flac" | "wma" | "wav" | "aac" | "m4a" | "ape"
-            )
-        })
-        .unwrap_or(false)
-}
-
-// Download audio from URL with yt-dlp
-// Setting up yt-dlp requires:
-// 1. ffmpeg
-// 2.
-fn download_audio(
-    url: &str,
-    output_dir: &Path,
-) -> Result<(), Box<dyn std::error::Error>> {
-    // yt-dlp 
-    // -v 'https://www.youtube.com/watch?v=KT0B9ArJV0M' --cookies-from-browser brave
-    let output_loc = format!("{}/%(title)s.%(ext)s", output_dir.display());
-    let dl_cmd = Command::new("yt-dlp")
-        .args([
-            "-x",
-            "--audio-format",
-            "mp3",
-            //"--audio-quality", "0",
-            "--extractor-args", "youtube:player_client=android",
-            //"--cookies-from-browser", "brave",
-            "-o",
-            &output_loc,
-            url,
-        ])
-        .status()
-        .expect("Failed to run yt-dlp");
-
-    if !dl_cmd.success() {
-        return Err("yt-dlp failed".into());
-    }
-    Ok(())
-}
-
-// Start by connecting song name and artist to youtube, see what we
-// can search by.
-fn search_audio(name: &str, artist: &str) -> Result<String, Box<dyn std::error::Error>> {
-    // Trim whitespace and "+" separate name and artist word by word.
-    let name_and_artist = name.trim().split_whitespace().chain(artist.trim().split_whitespace()).collect::<Vec<_>>().join(" ");
-
-    let output = Command::new("yt-dlp")
-        .args([
-            "--get-id",
-            "--default-search", "ytsearch1",
-            &name_and_artist,
-        ])
-        .output()?;
-    
-    if !output.status.success() {
-        return Err("yt-dlp search failed".into())
-    }
-    let video_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    Ok(format!("https://www.youtube.com/watch?v={}", video_id))
-}
-
-// You can organize your audio files into different folders for easy classification.
-// OpenSwim Pro supports up to 3 levels of folders. Files located in folders beyond this depth may not be recognized.
-// With the Shokz App, you can manage the MP3 playback range: play the current folder or play all folders.
-// In "Play Current Folder" mode, press and hold the multifunction button and the volume down (–) button for 2 seconds to switch to the next folder.
+use crate::{app::{get_cache_dir, local_audio_cache_dir, setup_app_directories}, audio::{AudioError, AudioInfo}, device::AttachedDevice, index::AudioIndex, source::YtDlpSource};
 
 fn main() {
-    // 1. Get SP Device. Whether we need this or not will see.
-    let swim_pro = Command::new("diskutil")
-        .args(["info", SWIM_PRO_PATH])
-        .output()
-        .expect("Did not find SWIM PRO device.");
-    let _ = String::from_utf8_lossy(&swim_pro.stdout);
+    // Load system state from config + data + cache directories.
+    // 1. local file cache, for existing audio.
+    // 2. audio lookup map -> mapping (artist, song) -> audio file.
+    // 3. 
+    setup_app_directories().expect("Failed to create app directories.");
 
-    // 2. Get contents from SP device, up to supported directory depth and
-    //
-    let sp_contents = walkdir::WalkDir::new(SWIM_PRO_PATH)
-        .max_depth(SWIM_PRO_MAX_DEPTH)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|entry| is_supported_audio_file(entry));
-    for file in sp_contents {
-        println!("{:?}", file);
-    }
+    // 1. Get user device to download audio to.    
+    let dirpath = {
+        println!("Provide a directory (empty -> {})", local_audio_cache_dir().to_string_lossy());
+        let mut directory = String::new();
+        stdin()
+            .read_line(&mut directory)
+            .expect("Failed to read line");
+
+        if directory.trim().is_empty() {
+            get_cache_dir().join("audio")
+        } else {
+            PathBuf::from(&directory.trim())
+        }
+    };
+
+    let source = YtDlpSource {name: "ytdlp".to_string()};
+    let target = AttachedDevice::new(dirpath.display().to_string(), dirpath);
+
+    // Iterate sources in order, until we find one that contains the AudioInfo.
+    // Fetch from the source to the local file cache, will mean we cache the audio there for a future look up.
+    // 
 
     // 3. Import music onto device.
     //  - Select a source type for import.
@@ -108,7 +48,7 @@ fn main() {
     // 1. Provide a youtube URL.
     // 2. Download YT URL to mp3.
     // 3. Place mp3 onto sp device, with sanitized name.
-    loop {
+    /*loop {
         println!("Search (0) or Link (1)?");
         let mut mode = String::new();
         stdin().read_line(&mut mode).expect("Failed to read line");
@@ -132,17 +72,6 @@ fn main() {
         };
         println!("Downloading audio from {}", link);
 
-        println!("Provide a directory (empty -> {})", SWIM_PRO_PATH);
-        let mut directory = String::new();
-        stdin()
-            .read_line(&mut directory)
-            .expect("Failed to read line");
-        let directory = if directory.trim().is_empty() {
-            SWIM_PRO_PATH
-        } else {
-            directory.trim()
-        };
-
         download_audio(&link, Path::new(&directory)).expect("Failed to download audio");
-    }
+    }*/
 }
