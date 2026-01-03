@@ -1,9 +1,4 @@
-use std::fmt::Display;
-use std::path::{Path, PathBuf};
-use std::fs::DirEntry;
-
-use crate::source::AudioSource;
-use crate::target::AudioTarget;
+use std::{fs::DirEntry, path::{Path, PathBuf}};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PlaylistName {
@@ -26,6 +21,22 @@ pub struct Playlist {
     pub audio: Vec<AudioInfo>,
 }
 
+// A hashable key for indexing audio by artist + title.
+#[derive(Hash, PartialEq, Eq, Clone, Debug)]
+pub struct AudioKey {
+    pub artist: String,
+    pub title: String,
+}
+
+impl AudioKey {
+    pub fn from_info(info: &AudioInfo) -> Option<Self> {
+        Some(Self {
+            artist: info.artist.as_ref()?.to_lowercase(),
+            title: info.title.as_ref()?.to_lowercase(),
+        })
+    }
+}
+
 // AudioInfo -> A structure representing various information about audio. Depending on the information present, it can
 // be used for searching different AudioSource and AudioTarget, to see where the audio resides already.
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
@@ -35,24 +46,29 @@ pub struct AudioInfo {
     pub filename: Option<String>,
     pub youtube_url: Option<String>,
     pub isrc: Option<String>,
-    pub duration_secs: Option<u32>
+    pub duration_secs: Option<u32>,
 }
 
 impl AudioInfo {
-    pub fn from_filename(filename: &Path) -> Self {
-        let stem = filename.file_stem()
-            .map(|s| s.to_string_lossy().to_string()).unwrap();
+    pub fn from_filename(filename: impl AsRef<Path>) -> Self {
+        let filename_str = filename.as_ref().to_string_lossy();
+        let stem = filename
+            .as_ref()
+            .file_stem()
+            .map(|s| s.to_string_lossy())
+            .unwrap_or(filename_str.clone());
 
         // Try to split up the filename to artist + title, if delimiter isn't there just take it all as title.
-        let (artist, title) = stem.split_once(" - ")
-            .or_else(|| stem.split_once(" – "))  // en-dash
+        let (artist, title) = stem
+            .split_once(" - ")
+            .or_else(|| stem.split_once(" – ")) // en-dash
             .map(|(a, t)| (Some(a.trim().to_string()), Some(t.trim().to_string())))
             .unwrap_or((None, Some(stem.to_string())));
 
         Self {
             artist,
             title,
-            filename: Some(filename.to_string_lossy().to_string()), // AttachedDevice will always have at least filenames.
+            filename: Some(filename_str.to_string()), // AttachedDevice will always have at least filenames.
             youtube_url: None,
             isrc: None,
             duration_secs: None,
@@ -62,6 +78,8 @@ impl AudioInfo {
 
 #[derive(Debug, thiserror::Error)]
 pub enum AudioError {
+    #[error("Unexpected Behavior")]
+    Unexpected,
     #[error("Audio not found")]
     NotFound,
     #[error("Missing Audio Info")]
@@ -73,17 +91,6 @@ pub enum AudioError {
     #[error("IO Error: {0}")]
     Io(#[from] std::io::Error),
 }
-
-struct AudioLookup {
-    info: AudioInfo,
-    location: AudioLocation,
-}
-
-// 1. Check if the AudioInfo exists on the source.
-//pub fn transfer<S: AudioSource, T: AudioTarget>(source: S, target: T, info: &AudioInfo) -> Result<AudioLocation, AudioError> {
-//    let source_info = source.search(info)?;
-//    let intermediate_transfer = source.fetch(&source_info, dest)
-//}
 
 // Represents an audio location, with varying types for different location implementations.
 #[derive(Clone, Debug)]
@@ -100,4 +107,36 @@ impl AudioLocation {
     pub fn remote(url: impl Into<String>) -> Self {
         Self::RemoteUrl(url.into())
     }
+}
+
+pub fn is_supported_audio_file(entry: &DirEntry) -> bool {
+    if !entry.path().is_file() {
+        return false;
+    }
+
+    // macOS fork files.
+    if entry.file_name().to_string_lossy().starts_with("._") {
+        return false;
+    }
+
+    entry
+        .path()
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| {
+            matches!(
+                ext.to_lowercase().as_str(),
+                "mp3" | "flac" | "wma" | "wav" | "aac" | "m4a" | "ape"
+            )
+        })
+        .unwrap_or(false)
+}
+
+/// List all supported audio files in a folder, returning AudioInfo for each.
+pub fn list_audio_in_folder(folder: &Path) -> Result<Vec<AudioInfo>, AudioError> {
+    std::fs::read_dir(folder)?
+        .filter_map(|e| e.ok())
+        .filter(|entry| is_supported_audio_file(entry))
+        .map(|entry| Ok(AudioInfo::from_filename(&entry.file_name())))
+        .collect()
 }

@@ -5,6 +5,7 @@
 4. bulk import songs, spawn many parallel tasks reading from async-channel.
 5. Make song fetching retriable, cycle through different methods.
 6. Download a playlist -> execute per song task to look up song from hierarchial sources + download to device.
+7. use a crate like strsim for similarity scoring to search file cache.
 
 Music Man Daemon
 ================
